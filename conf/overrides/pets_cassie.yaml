@@ -1,0 +1,30 @@
+# @package _group_
+env: "cassie"
+
+
+speed: 0.6
+training_num: 1
+test_num: 1
+traj: "walking"
+obs_norm: false
+
+learned_rewards: true
+num_steps: 1000000
+trial_length: 1680
+
+num_elites: 10
+model_lr: 0.00028
+model_wd: 0.00010
+model_batch_size: 32
+validation_ratio: 0.05
+no_delta_list: [ 0 ]
+freq_train_model: 100
+patience: 12
+num_epochs_train_model: 12
+
+planning_horizon: 30
+cem_num_iters: 5
+cem_elite_ratio: 0.16
+cem_population_size: 400
+cem_alpha: 0.12
+cem_clipped_normal: false

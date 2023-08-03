@@ -1,0 +1,93 @@
+seed: 0
+device: cuda:0
+log_frequency_agent: 1000
+save_video: false
+debug_mode: false
+experiment: default
+root_dir: ./exp
+algorithm:
+  name: mbpo
+  normalize: true
+  normalize_double_precision: true
+  target_is_delta: false
+  learned_rewards: true
+  freq_train_model: ${overrides.freq_train_model}
+  real_data_ratio: 0.5
+  sac_samples_action: true
+  initial_exploration_steps: 5000
+  random_initial_explore: false
+  num_eval_episodes: 1
+  agent:
+    _target_: mbrl.third_party.pytorch_sac_pranz24.sac.SAC
+    num_inputs: ???
+    action_space:
+      _target_: gym.env.Box
+      low: ???
+      high: ???
+      shape: ???
+    args:
+      gamma: ${overrides.sac_gamma}
+      tau: ${overrides.sac_tau}
+      alpha: ${overrides.sac_alpha}
+      policy: ${overrides.sac_policy}
+      target_update_interval: ${overrides.sac_target_update_interval}
+      automatic_entropy_tuning: ${overrides.sac_automatic_entropy_tuning}
+      target_entropy: ${overrides.sac_target_entropy}
+      hidden_size: ${overrides.sac_hidden_size}
+      device: ${device}
+      lr: ${overrides.sac_lr}
+dynamics_model:
+  _target_: mbrl.models.GaussianMLP
+  device: ${device}
+  num_layers: 4
+  in_size: ???
+  out_size: ???
+  ensemble_size: 8
+  hid_size: 200
+  deterministic: false
+  propagation_method: random_model
+  learn_logvar_bounds: false
+  activation_fn_cfg:
+    _target_: torch.nn.SiLU
+overrides:
+  env: cassie
+  obs_norm: false
+  num_steps: 300000
+  epoch_length: 1000
+  num_elites: 5
+  patience: 10
+  model_lr: 0.0003
+  model_wd: 5.0e-05
+  model_batch_size: 256
+  validation_ratio: 0.2
+  freq_train_model: 250
+  effective_model_rollouts_per_step: 400
+  rollout_schedule:
+  - 20
+  - 300
+  - 1
+  - 25
+  num_sac_updates_per_step: 20
+  sac_updates_every_steps: 1
+  num_epochs_to_retain_sac_buffer: 5
+  sac_gamma: 0.99
+  sac_tau: 0.005
+  sac_alpha: 0.2
+  sac_policy: Gaussian
+  sac_target_update_interval: 4
+  sac_automatic_entropy_tuning: false
+  sac_target_entropy: -1
+  sac_hidden_size: 512
+  sac_lr: 0.0001
+  sac_batch_size: 256
+action_optimizer:
+  _target_: mbrl.planning.CEMOptimizer
+  num_iterations: ${overrides.cem_num_iters}
+  elite_ratio: ${overrides.cem_elite_ratio}
+  population_size: ${overrides.cem_population_size}
+  alpha: ${overrides.cem_alpha}
+  lower_bound: ???
+  upper_bound: ???
+  return_mean_elites: true
+  device: ${device}
+  clipped_normal: ${overrides.cem_clipped_normal}

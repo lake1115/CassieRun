@@ -18,8 +18,17 @@ import mbrl.algorithms.planet as planet
 import mbrl.env.termination_fns
 import mbrl.env.reward_fns
 
+import torch
+
+def cassie(act: torch.Tensor, next_obs: torch.Tensor):
+    assert len(next_obs.shape) == 2
+    z = next_obs[:, 1]
+    done = (z < 0.8)
+    done = done[:, None]
+    return done
+
 # term_fn = mbrl.env.termination_fns.humanoid
-term_fn = mbrl.env.termination_fns.cassie
+term_fn = cassie # mbrl.env.termination_fns.humanoid
 reward_fn = None
 model_env = [env, test_env, term_fn, reward_fn]
 
@@ -27,6 +36,7 @@ import hydra
 import numpy as np
 import omegaconf
 import torch
+
 
 print('------Start Training------')
 @hydra.main(config_path="conf", config_name="main")

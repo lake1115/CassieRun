@@ -4,8 +4,8 @@ from cassie_m.udp import euler2quat, quaternion_product, inverse_quaternion, qua
 import os
 
 from math import floor
-import gym
-from gym.spaces import Box
+import gymnasium as gym
+from gymnasium.spaces import Box
 import numpy as np 
 
 import random

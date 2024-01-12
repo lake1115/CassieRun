@@ -125,13 +125,12 @@ class Eval():
 
                 
                 if self.args.stats:
-                    print(f"time: {env.time}   act spd: {env.sim.qvel()[0]:+.2f}   cmd speed: {env.speed:+.2f}   cmd_sd_spd: {env.side_speed:+.2f}   phase add: {env.phase_add:.2f}   orient add: {orient_add:+.2f}", end="\r")
+                    print(f"act spd: {env.sim.qvel()[0]:+.2f}   cmd speed: {env.speed:+.2f}   cmd_sd_spd: {env.side_speed:+.2f}   phase add: {env.phase_add:.2f}   orient add: {orient_add:+.2f}", end="\r")
 
                 if hasattr(env, 'simrate'):
                     start = time.time()
 
-
-                if (env.vis is None or not env.vis.ispaused()):
+                if (not env.vis.ispaused()):
                     # Update Orientation
                     env.orient_add = orient_add
                         

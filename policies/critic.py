@@ -260,7 +260,7 @@ class LSTM_V(Critic):
   
   def forward(self, state):
     if self.training == False:
-        state = (state - self.obs_mean.to(state.device)) / self.obs_std.to(state.device)
+        inputs = (inputs - self.obs_mean) / self.obs_std
     dims = len(state.size())
 
     if dims == 3: # if we get a batch of trajectories
@@ -269,7 +269,7 @@ class LSTM_V(Critic):
       for t, state_batch_t in enumerate(state):
         x_t = state_batch_t
         for idx, layer in enumerate(self.critic_layers):
-          c, h = self.cells[idx].to(state.device), self.hidden[idx].to(state.device)
+          c, h = self.cells[idx], self.hidden[idx]
           self.hidden[idx], self.cells[idx] = layer(x_t, (h, c))
           x_t = self.hidden[idx]
         x_t = self.network_out(x_t)

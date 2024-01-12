@@ -3,33 +3,14 @@ import time
 import torch
 import numpy as np
 import ray
-
+from cassierun_env import CassieRunEnv
 def env_factory(args, verbose=False, **kwargs):
     from functools import partial
-    if args.env_name == "CassieRun-v0":
-        from cassierun_env import CassieRunEnv
-        env_fn = partial(CassieRunEnv, task=args.task, traj=args.traj, speed=args.speed, clock_based=args.clock_based, state_est=args.state_est, dynamics_randomization=args.dynamics_randomization, history=args.history, impedance=args.impedance)
-        if args.mirror:
-            from cassierun_env_mirror import CassieRunMirrorEnv
-            env_fn = partial(CassieRunMirrorEnv, env_fn, mirrored_obs=env_fn().mirrored_obs, mirrored_act=env_fn().mirrored_acts)
-        # if args.meta:
-        #     from cassierun_env_meta import CassieRunMetaEnv
-        #     env_fn = partial(CassieRunMetaEnv, env_fn, args.n_tasks)
-    elif args.env_name == "HalfCheetahMeta":
-        from half_cheetah_vel import HalfCheetahVelEnv
-        env_fn = partial(HalfCheetahVelEnv,goal_vel=1.0)
-        if args.meta:
-            from half_cheetah_vel import CheetahMetaEnv
-            env_fn = partial(CheetahMetaEnv, env_fn, n_tasks = args.n_tasks)
-    else:
-        import gym
 
-        def make_env(env_name):
-            def _f():
-                env = gym.make(env_name)
-                return env
-            return _f
-        env_fn = make_env(args.env_name)   
+    env_fn = partial(CassieRunEnv, task=args.task, traj=args.traj, speed=args.speed, clock_based=args.clock_based, state_est=args.state_est, dynamics_randomization=args.dynamics_randomization, history=args.history, impedance=args.impedance)
+    if args.mirror:
+      env_fn = partial(SymmetricEnv, env_fn, mirrored_obs=env_fn().mirrored_obs, mirrored_act=env_fn().mirrored_acts)
+
     
     if verbose:
       print("Created cassie env with arguments:")
@@ -49,31 +30,79 @@ class WrapEnv:
         return getattr(self.env, attr)
 
     def step(self, action):
-        if action.ndim == 1:
-            env_return = self.env.step(action)
-        else:
-            env_return = self.env.step(action[0])
-        if len(env_return) == 4:
-            state, reward, done, info = env_return
-        else:
-            state, reward, done, _, info = env_return
+        state, reward, done, info = self.env.step(action[0])
         return np.array([state]), np.array([reward]), np.array([done]), np.array([info])
-
 
     def render(self):
         self.env.render()
 
     def reset(self):
-        state = self.env.reset()
-        if isinstance(state, tuple):
-            ## gym state is tuple type
-            return np.array([state[0]])
-        else:
-            return np.array([state])
+        return np.array([self.env.reset()])
+
+class SymmetricEnv:    
+    def __init__(self, env_fn, mirrored_obs=None, mirrored_act=None, obs_fn=None, act_fn=None):
+
+        assert (bool(mirrored_act) ^ bool(act_fn)) and (bool(mirrored_obs) ^ bool(obs_fn)), \
+            "You must provide either mirror indices or a mirror function, but not both, for \
+             observation and action."
+
+        if mirrored_act:
+            self.act_mirror_matrix = torch.Tensor(_get_symmetry_matrix(mirrored_act))
+
+        elif act_fn:
+            assert callable(act_fn), "Action mirror function must be callable"
+            self.mirror_action = act_fn
+
+        if mirrored_obs:
+            self.obs_mirror_matrix = torch.Tensor(_get_symmetry_matrix(mirrored_obs))
+
+        elif obs_fn:
+            assert callable(obs_fn), "Observation mirror function must be callable"
+            self.mirror_observation = obs_fn
+
+        self.env = env_fn()
+
+    def __getattr__(self, attr):
+        return getattr(self.env, attr)
+
+    def mirror_action(self, action):
+        return action @ self.act_mirror_matrix.to(action.device)
+
+    def mirror_observation(self, obs):
+        return obs @ self.obs_mirror_matrix.to(obs.device)
+
+    # To be used when there is a clock in the observation. In this case, the mirrored_obs vector inputted
+    # when the SymmeticEnv is created should not move the clock input order. The indices of the obs vector
+    # where the clocks are located need to be inputted.
+    def mirror_clock_observation(self, obs, clock_inds):
+        # print("obs.shape = ", obs.shape)
+        # print("obs_mirror_matrix.shape = ", self.obs_mirror_matrix.shape)
+        mirror_obs = obs @ self.obs_mirror_matrix.to(obs.device)
+        clock = mirror_obs[:, self.clock_inds]
+        # print("clock: ", clock)
+        for i in range(np.shape(clock)[1]):
+            mirror_obs[:, clock_inds[i]] = np.sin(np.arcsin(clock[:, i]) + np.pi)
+        return mirror_obs
+    def mirror_phase_observation(self, obs, ref_inds):
+        mirror_obs = obs @ self.obs_mirror_matrix.to(obs.device)
+        phase = mirror_obs[:, self.ref_inds]
+        for i in range(np.shape(phase)[1]):
+            mirror_obs[:, ref_inds[i]] = (phase[:,i]-1 + 14) % 28 +1 
+        return mirror_obs
+
+def _get_symmetry_matrix(mirrored):
+    numel = len(mirrored)
+    mat = np.zeros((numel, numel))
+
+    for (i, j) in zip(np.arange(numel), np.abs(np.array(mirrored).astype(int))):
+        mat[i, j] = np.sign(mirrored[i])
+
+    return mat
 
 
-#@ray.remote
-def _run_random_actions(iter, policy, env_fn, noise_std,device):
+
+@ray.remote
+def _run_random_actions(iter, policy, env_fn, noise_std):
 
     env = WrapEnv(env_fn)
     states = np.zeros((iter, env.observation_space.shape[0]))
@@ -82,10 +111,10 @@ def _run_random_actions(iter, policy, env_fn, noise_std,device):
     for t in range(iter):
         states[t, :] = state
 
-        state = torch.Tensor(state).to(device)
-        # state = torch.Tensor(state)
-        action = policy(state).to("cpu")
-        # action = policy(state)
+       # state = torch.Tensor(state).to(device)
+        state = torch.Tensor(state)
+        #action = policy(state).to("cpu")
+        action = policy(state)
         # add gaussian noise to deterministic action
         action = action + torch.randn(action.size()) * noise_std
 
@@ -96,11 +125,11 @@ def _run_random_actions(iter, policy, env_fn, noise_std,device):
     
     return states
 
-def get_normalization_params(iter, policy, env_fn, noise_std, procs=4,device="cpu"):
+def get_normalization_params(iter, policy, env_fn, noise_std, procs=4):
     print("Gathering input normalization data using {0} steps, noise = {1}...".format(iter, noise_std))
 
-    #states_ids = [_run_random_actions.remote(iter // procs, policy, env_fn, noise_std,device) for _ in range(procs)]
-    states_ids = [_run_random_actions(iter // procs, policy, env_fn, noise_std,device) for _ in range(procs)]
+    states_ids = [_run_random_actions.remote(iter // procs, policy, env_fn, noise_std) for _ in range(procs)]
+
     states = []
     for _ in range(procs):
         ready_ids, _ = ray.wait(states_ids, num_returns=1)

@@ -15,11 +15,11 @@ from util.eval import Eval
 import numpy as np
 import json
 import os
-# os.system('nvidia-smi -q -d Memory | grep -A5 GPU | grep Free > tmp.txt')
-# memory_gpu = [int(x.split()[2]) for x in open('tmp.txt', 'r').readlines()]
-# os.environ["CUDA_VISIBLE_DEVICES"] = str(np.argmax(memory_gpu)) 
-# os.system('rm tmp.txt')
-os.environ["CUDA_VISIBLE_DEVICES"]="0,1"
+os.system('nvidia-smi -q -d Memory | grep -A5 GPU | grep Free > tmp.txt')
+memory_gpu = [int(x.split()[2]) for x in open('tmp.txt', 'r').readlines()]
+os.environ["CUDA_VISIBLE_DEVICES"] = str(np.argmax(memory_gpu)) 
+os.system('rm tmp.txt')
+#os.environ["CUDA_VISIBLE_DEVICES"]="0,1"
 if __name__ == "__main__":
 
     parser = argparse.ArgumentParser()
@@ -35,7 +35,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--device", type=str, default="cuda" if torch.cuda.is_available() else "cpu"
     )
-    
+
     if sys.argv[1] == 'eval':
 
         sys.argv.remove(sys.argv[1])
@@ -60,161 +60,76 @@ if __name__ == "__main__":
         eval = Eval(args, run_args, policy)
         eval.eval_policy()
 
+
+    # Training Policy #
+    """
+    General arguments for configuring the environment
+    """
+    # command input, state input, env attributes
+    parser.add_argument("--clock_based", default=False, action='store_true')
+    parser.add_argument("--state_est", default=False, action='store_true')
+    parser.add_argument("--simrate", default=60, type=int, help="simrate of environment")
+    parser.add_argument("--history", default=0, type=int)                                         # number of previous states to use as input
+    parser.add_argument("--dynamics_randomization", default=True, action='store_false')
+    parser.add_argument("--impedance", default=False, action='store_true')             # learn PD gains or not
+    parser.add_argument("--task", default="walking", type=str, help="select task for reward")
+    parser.add_argument("--max_traj_len", type=int, default=400, help="Max episode horizon")
+    parser.add_argument("--speed", type=float, default=1.0)
+    # attributes for trajectory based environments
+    parser.add_argument("--traj", default="walking", type=str, help="reference trajectory to use. options are 'aslip', 'walking', 'stepping'")
+    parser.add_argument("--delta_action", default=True, action='store_false', dest='action as delta action')
+    parser.add_argument("--ik_baseline", default=False, action='store_true', dest='ik_baseline')             # use ik as baseline for aslip + delta policies?
+    # mirror loss and reward
+    parser.add_argument("--mirror", default=True, action='store_false')             # mirror actions or not
+
+    """
+        General arguments for Curriculum Learning
+    """
+    ## TODO: need check
+    parser.add_argument("--exchange_reward", default=None)                              # Can only be used with previous (below)
+    parser.add_argument("--previous", type=str, default=None)                           # path to directory of previous policies for resuming training
+
+
+
+    if sys.argv[1] == 'ppo':
+
+        sys.argv.remove(sys.argv[1])
+        """
+            Utility for running Proximal Policy Optimization.
+
+        """
+        from algos.ppo import run_experiment
+
+        # PPO algo args
+        parser.add_argument("--input_norm_steps", type=int, default=10000)
+        parser.add_argument("--layers", type=int, nargs="*", default=(256, 256))
+        parser.add_argument("--n_itr", type=int, default=10000, help="Number of iterations of the learning algorithm")
+        parser.add_argument("--lr", type=float, default=1e-4, help="Adam learning rate") # Xie
+        parser.add_argument("--eps", type=float, default=1e-5, help="Adam epsilon (for numerical stability)")
+        parser.add_argument("--lam", type=float, default=0.95, help="Generalized advantage estimate discount")
+        parser.add_argument("--gamma", type=float, default=0.99, help="MDP discount")
+        parser.add_argument("--anneal", default=1.0, action='store_true', help="anneal rate for stddev")
+        parser.add_argument("--learn_stddev", default=False, action='store_true', help="learn std_dev or keep it fixed")
+        parser.add_argument("--std_dev", type=int, default=-1.5, help="exponent of exploration std_dev")
+        parser.add_argument("--entropy_coeff", type=float, default=0.0, help="Coefficient for entropy regularization")
+        parser.add_argument("--clip", type=float, default=0.2, help="Clipping parameter for PPO surrogate loss")
+        parser.add_argument("--minibatch_size", type=int, default=64, help="Batch size for PPO updates")
+        parser.add_argument("--epochs", type=int, default=3, help="Number of optimization epochs per PPO update") #Xie
+        parser.add_argument("--num_steps", type=int, default=4096, help="Number of sampled timesteps per gradient estimate")
+        parser.add_argument("--use_gae", type=bool, default=True,help="Whether or not to calculate returns using Generalized Advantage Estimation")
+        parser.add_argument("--num_worker", type=int, default=4, help="Number of threads to train on")
+        parser.add_argument("--max_grad_norm", type=float, default=0.05, help="Value to clip gradients at.")
+        parser.add_argument("--recurrent",   action='store_true')
+        parser.add_argument("--bounded",   type=bool, default=False)
+        parser.add_argument("--policy",   type=str, default='ppo')
+        args = parser.parse_args()
+
+        args = parse_previous(args)
+
+        run_experiment(args)
+
+    ## TODO: sac policy
+    ## TODO: mbrl policy
     else:
-        # Training Policy #
-        """
-        General arguments for configuring the environment
-        """
-        # command input, state input, env attributes
-        parser.add_argument("--clock_based", default=False, action='store_true')
-        parser.add_argument("--state_est", default=False, action='store_true')
-        parser.add_argument("--simrate", default=60, type=int, help="simrate of environment")
-        parser.add_argument("--history", default=0, type=int)                                         # number of previous states to use as input
-        parser.add_argument("--dynamics_randomization", default=True, action='store_false')
-        parser.add_argument("--impedance", default=False, action='store_true')             # learn PD gains or not
-        parser.add_argument("--task", default="walking", type=str, help="select task for reward")
-        parser.add_argument("--max_traj_len", type=int, default=150, help="Max episode horizon")
-        parser.add_argument("--speed", type=float, default=1.0)
-        # attributes for trajectory based environments
-        parser.add_argument("--traj", default="walking", type=str, help="reference trajectory to use. options are 'aslip', 'walking', 'stepping'")
-        parser.add_argument("--delta_action", default=True, action='store_false', dest='action as delta action')
-        parser.add_argument("--ik_baseline", default=False, action='store_true', dest='ik_baseline')             # use ik as baseline for aslip + delta policies?
-        # mirror loss and reward
-        parser.add_argument("--mirror", default=False, action='store_true')             # mirror actions or not
-
-        """
-            General arguments for Curriculum Learning
-        """
-        ## TODO: need check
-        parser.add_argument("--exchange_reward", default=None)                              # Can only be used with previous (below)
-        parser.add_argument("--previous", type=str, default=None)                           # path to directory of previous policies for resuming training
-
-
-
-        if sys.argv[1] == 'ppo':
-
-            sys.argv.remove(sys.argv[1])
-            """
-                Utility for running Proximal Policy Optimization.
-
-            """
-            from algos.ppo import run_experiment
-
-            # PPO algo args
-            parser.add_argument("--input_norm_steps", type=int, default=10000)
-            parser.add_argument("--layers", type=int, nargs="*", default=(256, 256))
-            parser.add_argument("--n_itr", type=int, default=10000, help="Number of iterations of the learning algorithm")
-            parser.add_argument("--lr", type=float, default=1e-4, help="Adam learning rate") # Xie
-            parser.add_argument("--eps", type=float, default=1e-5, help="Adam epsilon (for numerical stability)")
-            parser.add_argument("--lam", type=float, default=0.95, help="Generalized advantage estimate discount")
-            parser.add_argument("--gamma", type=float, default=0.99, help="MDP discount")
-            parser.add_argument("--anneal", default=1.0, action='store_true', help="anneal rate for stddev")
-            parser.add_argument("--learn_stddev", default=False, action='store_true', help="learn std_dev or keep it fixed")
-            parser.add_argument("--std_dev", type=int, default=-1.5, help="exponent of exploration std_dev")
-            parser.add_argument("--entropy_coeff", type=float, default=0.0, help="Coefficient for entropy regularization")
-            parser.add_argument("--clip", type=float, default=0.2, help="Clipping parameter for PPO surrogate loss")
-            parser.add_argument("--minibatch_size", type=int, default=64, help="Batch size for PPO updates")
-            parser.add_argument("--epochs", type=int, default=3, help="Number of optimization epochs per PPO update") #Xie
-            parser.add_argument("--num_steps", type=int, default=4096, help="Number of sampled timesteps per gradient estimate")
-            parser.add_argument("--use_gae", type=bool, default=True,help="Whether or not to calculate returns using Generalized Advantage Estimation")
-            parser.add_argument("--num_worker", type=int, default=4, help="Number of threads to train on")
-            parser.add_argument("--max_grad_norm", type=float, default=0.05, help="Value to clip gradients at.")
-            parser.add_argument("--recurrent",   action='store_true')
-            parser.add_argument("--bounded",   type=bool, default=False)
-            parser.add_argument("--policy",   type=str, default='ppo')
-            args = parser.parse_args()
-
-            args = parse_previous(args)
-
-            run_experiment(args)
-
-        elif sys.argv[1] == 'sac':
-        
-            sys.argv.remove(sys.argv[1])
-
-            from algos.sac import run_experiment
-
-            # SAC algo args
-            # policy
-            parser.add_argument("--input_norm_steps", type=int, default=10000)
-            parser.add_argument("--layers", type=int, nargs="*", default=(128, 128))
-
-            # std
-            parser.add_argument("--learn_stddev", default=False, action='store_true', help="learn std_dev or keep it fixed")
-            parser.add_argument("--std_dev", type=int, default=-1.5, help="exponent of exploration std_dev")
-            parser.add_argument("--anneal", default=1.0, action='store_true', help="anneal rate for stddev")
-
-            # others
-            parser.add_argument("--recurrent",   action='store_true')
-            parser.add_argument("--bounded",   type=bool, default=False)            # bound for actor output "mean"
-            parser.add_argument("--policy",   type=str, default='sac')
-
-            # SAC (copy from ppo)
-            parser.add_argument("--gamma", type=float, default=0.99, help="MDP discount")
-            parser.add_argument("--lr", type=float, default=1e-3, help="Adam learning rate")
-            parser.add_argument("--eps", type=float, default=1e-5, help="Adam epsilon (for numerical stability)")
-            parser.add_argument("--entropy_coeff", type=float, default=0.0, help="Coefficient for entropy regularization")
-            parser.add_argument("--minibatch_size", type=int, default=256, help="Batch size for SAC updates")  # change from PPO
-            parser.add_argument("--epochs", type=int, default=3, help="Number of optimization epochs per PPO update")
-            parser.add_argument("--max_grad_norm", type=float, default=0.05, help="Value to clip gradients at.")
-            parser.add_argument("--num_steps", type=int, default=1024, help="Number of sampled timesteps per gradient estimate")# change from ppo, for evaluation
-            parser.add_argument("--n_itr", type=int, default=10000, help="Number of iterations of the learning algorithm")
-
-            # new for sac
-            parser.add_argument('--init_temperature', type=float, default=1.0)  # hyperparameter alpha
-            parser.add_argument('--action_range', type=list, default=[-1.0, 1.0])        # for humanoid etc.
-            parser.add_argument('--epoch', type=int, default=600, help="train epochs") # 
-            # parser.add_argument('--step_per_epoch', type=int, default=30000, help="env steps per epoch") ## TODO refresh the buffer after 30000step/epoch?
-            parser.add_argument('--step_per_collect', type=int, default=1, help="how many data to collect per env step") #
-            parser.add_argument('--start_timesteps', type=int, default=10000, help="init env collect time steps for sac")
-            
-            # ray
-            parser.add_argument("--num_worker", type=int, default=4, help="Number of threads to train on")
-            args = parser.parse_args()
-
-            run_experiment(args)
-        elif sys.argv[1] == 'meta_ppo': # TODO: some error need to fix 
-            sys.argv.remove(sys.argv[1])
-            """
-                Utility for running Meta RL.
-
-            """
-            from algos.meta import run_experiment
-
-            parser.add_argument("--env_name", default="HalfCheetahMeta")                             # environment name
-            parser.add_argument("--n_train_tasks", type=int, default=4)
-            parser.add_argument("--n_eval_tasks", type=int, default=1)
-            parser.add_argument("--n_tasks", type=int, default=5)
-            parser.add_argument("--latent_size", type=int, default=5)
-            parser.add_argument("--env_layers", type=int, default=(128,128))
-            parser.add_argument("--recurrent",   default = True, action='store_true')
-            parser.add_argument("--num_traj_sample", type=int, default=32, help="Number of trajectory to sample") 
-            parser.add_argument("--num_worker", type=int, default=4, help="Number of threads to train on")
-            parser.add_argument("--std_dev", type=int, default=-1.5, help="exponent of exploration std_dev")
-            parser.add_argument("--bounded",   type=bool, default=False)
-            parser.add_argument("--kl_lambda",   type=float, default=0.1)
-            parser.add_argument("--layers", type=int, nargs="*", default=(256, 256))
-            parser.add_argument("--n_itr", type=int, default=10000, help="Number of iterations of the learning algorithm")
-            parser.add_argument("--lr", type=float, default=1e-4, help="Adam learning rate") # Xie
-            parser.add_argument("--eps", type=float, default=1e-5, help="Adam epsilon (for numerical stability)")
-            parser.add_argument("--lam", type=float, default=0.95, help="Generalized advantage estimate discount")
-            parser.add_argument("--gamma", type=float, default=0.99, help="MDP discount")
-            parser.add_argument("--anneal", default=1.0, action='store_true', help="anneal rate for stddev")
-            parser.add_argument("--learn_stddev", default=False, action='store_true', help="learn std_dev or keep it fixed")
-            parser.add_argument("--entropy_coeff", type=float, default=0.0, help="Coefficient for entropy regularization")
-            parser.add_argument("--clip", type=float, default=0.2, help="Clipping parameter for PPO surrogate loss")
-            parser.add_argument("--minibatch_size", type=int, default=64, help="Batch size for PPO updates")
-            parser.add_argument("--epochs", type=int, default=3, help="Number of optimization epochs per PPO update") #Xie
-            parser.add_argument("--num_steps", type=int, default=4096, help="Number of sampled timesteps per gradient estimate")
-            parser.add_argument("--use_gae", type=bool, default=True,help="Whether or not to calculate returns using Generalized Advantage Estimation")
-            parser.add_argument("--max_grad_norm", type=float, default=0.05, help="Value to clip gradients at.")
-            parser.add_argument("--meta", default=True, action='store_false')
-            parser.add_argument("--policy", default='meta')
-            args = parser.parse_args()
-            run_experiment(args)
-
-        ## TODO: sac policy
-        ## TODO: mbrl policy
-        else:
-            print("Invalid option '{}'".format(sys.argv[1]))
+        print("Invalid option '{}'".format(sys.argv[1]))
 

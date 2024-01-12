@@ -30,17 +30,21 @@ while True:
 
 ## Executable file
 ```
-Now only ppo is implemented
+By tianshou's RL libariary
 Training: 
-    python3 main.py ppo --save_name xxx
+    ppo_controller.py and sac_controller.py 
 Display:
-    python3 main.py eval --policy ppo --save_name xxx
+    ppo_display.py and sac_display.py
 
+By stable_baselines3's RL libariary
+Training:
+    cassie_paral.py
+Display:
+    display.py
 ```
 
 ## Display
 ```
-    space: start
     ctrl+P: get qpos
     double control right-click to track a certain body
     

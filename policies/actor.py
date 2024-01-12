@@ -233,8 +233,8 @@ class Gaussian_LSTM_Actor(Actor):
         self.max_action = max_action
 
         # Initialized to no input normalization, can be modified later
-        self.obs_std = torch.FloatTensor([1.0])
-        self.obs_mean = torch.FloatTensor([0.0])
+        self.obs_std = 1.0
+        self.obs_mean = 0.0
 
         self.is_recurrent = True
 
@@ -251,7 +251,7 @@ class Gaussian_LSTM_Actor(Actor):
         self.act = self.forward
 
     def _get_dist_params(self, state):
-        state = (state - self.obs_mean.to(state.device)) / self.obs_std.to(state.device)
+        state = (state - self.obs_mean) / self.obs_std
 
         dims = len(state.size())
 
@@ -262,7 +262,7 @@ class Gaussian_LSTM_Actor(Actor):
             y = []
             for t, x_t in enumerate(x):
                 for idx, layer in enumerate(self.actor_layers):
-                    c, h = self.cells[idx].to(state.device), self.hidden[idx].to(state.device)
+                    c, h = self.cells[idx], self.hidden[idx]
                     self.hidden[idx], self.cells[idx] = layer(x_t, (h, c))
                     x_t = self.hidden[idx]
                 y.append(x_t)
